@@ -1,0 +1,374 @@
+---
+title: "Data Analysis and Exploration of Asteroids that Have Been Detected Close to Earth" 
+author: "Nutless Neanderthals"
+date: "2024-04-28"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Introduction
+
+
+*Our data is data on asteroids detected close to Earth from Nasa. It was retrieved from [Kaggle](https://www.kaggle.com/datasets/lovishbansal123/nasa-asteroids-classification), and the creator of the dataset took the data from NASA’s Center for Near Earth Object Studies webiste. There are 40 variables in the dataset and 4687 observations, including multiple continuous variables that give physical descriptors of the asteroid (e.g. miss distance, diameter) as well as two categorical variables (near-miss date and hazardous classification). We are especially interested in the hazardous classification, which is an indication given by Nasa to predict whether an asteroid is likely to collide with earth. According to the Center for Near Earth Object Studies, an asteroid is considered ‘hazardous’ if  “In other words, asteroids that can't get any closer to the Earth (i.e., MOID) than 0.05 au (roughly 7,480,000 km or 4,650,000 mi) or are smaller than about 140 m (~500 ft) in diameter (i.e., H = 22.0 with assumed albedo of 14%) are not considered PHAs.” While this means that size of the asteroid is liekly a clear correlate for whether an asteroid is hazardous or not, we are still interested about whether other features of the asteroid correlate with its state of hazard. Another thing we are interested in is studying correlates for relative velocity- do asteroids of different sizes have different velocity?*
+
+# Data Overview and Cleaning
+*We chose to study eight specific variables:*
+
+
+  *Hazardous: either True or False, tells us if a asteroid is a threat or not. This is categorical.*
+
+
+  *Eccentricity: a scalar that measures the deviation of an orbit from a perfect circle. Ranges from 0 (a perfect circle) to 1. A more eccentric orbit means the path of the asteroid varies more significantly in distance from the sun. This is continuous.*
+
+
+  *Estimated Diameter in KM(Max):  the maximum estimated diameter of the asteroid in kilometers. This is continuous.*
+  
+  
+  *Absolute Magnitude: measure of the intrinsic brightness of an asteroid. It is defined as the apparent brightness an object would have if it were located exactly one astronomical unit (AU) from both the sun and the observer. Lower values mean the object is brighter. This is continuous. *
+  
+  
+  *Relative Velocity in KM/Sec: indicates the velocity of the asteroid relative to Earth, measured in kilometers per second. It represents the speed at which the asteroid is moving relative to Earth. This is continuous. *
+  
+  *Miss Distance: the distance by which an asteroid passes near Earth, usually measured in kilometers. It represents the closest point in the asteroid's orbit to Earth. The dataset contains 4 different columns corresponding to different units for Miss Distance; our analysis uses the Miss Distance measured in kilometers. This is continuous. *
+  
+  
+  *Est diameter in KM( min): This represents the minimum estimated diameter of the asteroid in kilometers. Like the maximum diameter, it’s an estimation based on the asteroid’s observed brightness. This is continuous.*
+  
+  *Close Approach Date: A continuous variable that represents the exact day the asteroid was detected close to Earth. This is categorical.*
+
+
+```{r, echo = F}
+nasa <- read.csv('nasa.csv')
+print("Variable Names")
+names(nasa)
+print("Dataset Dimensions")
+dim(nasa)
+```
+
+
+```{r, include = F}
+
+source("http://www.reuningscherer.net/s&ds230/Rfuncs/regJDRS.txt")
+library(car)
+library(leaps)
+library(questionr)
+library(corrplot)
+
+```
+
+## Data Cleaning
+
+*Our primary data cleaning revolved around changing our second categorical variable, date of close approach, into several larger categories each representing a 5 year-span. We hoped to do this to find correlates between date of close approach and other statistics.*
+```{r, echo = F}
+nasa$Close.Approach.Date <- sub("^(\\d{4})-\\d{2}-\\d{2}$", "\\1", nasa$Close.Approach.Date)
+nasa$Close.Approach.Date <- as.integer(nasa$Close.Approach.Date)
+nasa$Year.Category <- cut(nasa$Close.Approach.Date,
+                          breaks = seq(1995, 2020, by = 5),
+                          labels = c("1995-1999", "2000-2004", "2005-2009", "2010-2014", "2015-2019"),
+                          right = FALSE,
+                          include.lowest = TRUE)
+
+
+```
+
+
+# Graphics
+
+## Boxplots
+
+*We wanted to find correlations for other variables by hazard and by close approach year.*
+
+```{r, echo = F}
+# Log Transformations for variables to make it easier to visualize them in boxplots.
+nasa$logmaxdia <- log(nasa$Est.Dia.in.KM.max.)
+nasa$logab <- log(nasa$Absolute.Magnitude)
+```
+```{r, echo = F}
+par(mfrow=c(3,2))
+#by Hazardous status
+boxplot(nasa$Relative.Velocity.km.per.sec ~ nasa$Hazardous, col = c("red",'blue'), main = "Velocity based on Hazardous", cex.main = 0.7, ylab = "Relative Velocity (km/s)", xlab = "Hazardous") # a good boxplot
+boxplot(nasa$logmaxdia ~ nasa$Hazardous, col = c("red",'blue'), main = "Log(Max Diameter (in km)) based on Hazardous", cex.main = 0.7, ylab = "Estimated Diameter, Max (km)", xlab = "Hazardous", cex.lab = 0.8)
+boxplot(nasa$logab~ nasa$Hazardous, col = c("red",'blue'), main = "Log(Absolute Magnitude) based on Hazardous",cex.main = 0.7, xlab = "Hazardous", ylab = "Log of Absolute Magnitude") 
+boxplot(nasa$Miss.Dist..kilometers.~nasa$Hazardous, col = c("red",'blue'), main = "Miss Distance Based on hazardous", xlab = "Hazardous", ylab = "Miss Distance (km)")
+
+boxplot(nasa$Eccentricity ~ nasa$Hazardous, col = c("red",'blue'),main = "Eccentricity based on Hazardous", xlab = "Hazardous", ylab = "Eccentricity")
+```
+
+*There is a clear correlation between hazardous and the variables relative velocity, log(max estimated diameter), log(absolute magnitude), and eccentricity. There doesn't seem to be much of a difference between hazardous and non-hazardous asteroids and miss distance.*
+
+```{r, echo = F}
+boxplot(nasa$Relative.Velocity.km.per.sec ~ nasa$Year.Category, col = c("red",'blue','brown','green','yellow'), cex.main = 0.7, main = "Velocity based on Year", xlab = "Year Category", ylab = "Relative Velocity", cex.axis = 0.5)
+boxplot(nasa$logmaxdia ~ nasa$Year.Category, col = c("red",'blue','brown','green','yellow'), cex.main = 0.7, main = "Log(Max Diameter)based on Year", xlab = "Year Category", ylab = "Log of Max Diameter", cex.axis = 0.5)
+boxplot(nasa$logab~ nasa$Year.Category, col = c("red",'blue','brown','green','yellow'), cex.main = 0.7 ,main = "Log(Absolute Magnitude) based on Year", xlab = "Year Category", ylab = "Log of Absolute Magnitude ", cex.axis = 0.5) #Absolute magnitude
+boxplot(nasa$Miss.Dist..kilometers.~nasa$Year.Category, col = c("red",'blue','brown','green','yellow'), cex.main = 0.7, main = "Miss Distance based on Year", xlab = "Year Category", ylab = "Miss Distance", cex.axis = 0.5)
+boxplot(nasa$Eccentricity ~ nasa$Year.Category, col = c("red",'blue','brown','green','yellow'), cex.main = 0.7, main = "Eccentricity based on Year", xlab = "Year Category", ylab = "Eccentricity", cex.axis = 0.5)
+```
+
+*There does not seem to be clear trends, though miss distance does decrease as time goes on, magnitude increases as time goes on, and velocity decreases slightly as time goes on.*
+
+# Scatterplots
+
+*We were interested in how absolute magnitude which we predicted would be an important defining feature of asteroids would correlate with eccentricity and diameter.*
+
+```{r, echo = F}
+
+par(mfrow=c(1,2))
+plot(nasa$Eccentricity~ nasa$Absolute.Magnitude, main = "Plot of Eccentricity and Absolute Magnitude",cex.main=0.6, xlab = "Absolute Magntitude", ylab = "Eccentricity")
+plot(nasa$Est.Dia.in.KM.max.~nasa$Absolute.Magnitude, main = "Plot of Absolute Magnitude and Estimated Diameter",cex.main=0.6, ylab = "Estimated Diameter", xlab = "Absolute Magnitude" )
+
+```
+
+*There seems to be a positive trend between absolute magnitude and estimated diameter in kilometer max but less so absolute magnitude and eccentricity.*
+
+## QQPlots
+
+```{r, echo = F}
+par(mfrow = c(3, 2), cex.main = 0.9)
+qqPlot(nasa$Est.Dia.in.KM.max., main = "Normal Quantile Plot for Estimated Diameter in Kilometers, Max", ylab = "Estimated Diameter")
+qqPlot(nasa$Relative.Velocity.km.per.sec, main = "Normal Quantile Plot for Velocity in km/sec, Max", ylab = "Relative Velocity")
+qqPlot(nasa$Absolute.Magnitude, main = "Normal Quantile Plot for Absolute Magnitude", ylab = "Absolute Magnitude")
+qqPlot(nasa$Eccentricity, main = "Normal Quantile Plot for Eccentricity", ylab = "Eccentricity")
+qqPlot(nasa$Miss.Dist..kilometers., main = "Normal Quantile Plot for Miss Distance in km", ylab = "Miss Distance")
+```
+
+## Histograms
+
+*We wanted to see the overall shape of each variable- most appeared to be skewed right based on the QQPlots.*
+
+
+```{r, echo = F}
+
+par(mfrow=c(3,2))
+hist(nasa$Est.Dia.in.KM.max., main = "Maximum Estimated Diameter in Kilometers",cex.main = 0.7, xlab = "Max estimated diameter")
+hist(nasa$Relative.Velocity.km.per.sec,main = "Relative Velocity Kilometers per Second", cex.main = 0.7, xlab = "Relative Velocity")
+hist(nasa$Absolute.Magnitude, main = "Absolute Magnitude", cex.main = 0.7, xlab = "Absolute Magnitude")
+hist(nasa$Miss.Dist..kilometers., main = "Kilometers Fixed Distance", cex.main = 0.7, xlab = "Miss Distance")
+hist(nasa$Eccentricity, main = "Eccentricity", cex.main = 0.7, xlab = "Eccentricity")
+```
+
+# Basic Tests
+
+## Correlation
+
+
+*We wanted to see how Absolute Magnitude correlated with variables like eccentricity and estimated diameter and wanted to confirm our suspicions in our previous scatterplot.*
+
+
+```{r, echo = F}
+#Correlations
+myCor <- function(x, y, maintitle, xlabel, ylabel){
+  #make the scatterplot
+  plot(x, y, pch = 19, col = "red", main = maintitle, xlab = xlabel, ylab = ylabel, cex.main = 0.7)
+  #add text in the margin reporting the sample correlation)
+  mtext(paste("Sample Correlation =", round(cor(x, y), 3)), cex = 0.8)
+}
+
+
+myCor(nasa$Absolute.Magnitude, nasa$Eccentricity, "Plot. of Absolute Magnitude vs. Eccentricity", "Magnitude", "Eccentricity")
+myCor(nasa$Absolute.Magnitude, nasa$Est.Dia.in.KM.max., "Plot of Absolute Magnitude vs. Estimated Diameter", "Magnitude", "Max Diameter")
+```
+
+
+
+*The data proves us right, as there is high correlation between estimated diameter and absolute magnitude(-0.6) and lower correlation between absolute magnitude and eccentricity(-0.3). Both correlations are negative, meaning that as absolute magnitude increases, max estimated diameter and eccentricity decrease.*
+
+## T Test
+
+```{r, echo = F}
+#ttest by hazardous
+t.test(nasa$Absolute.Magnitude ~ nasa$Hazardous, conf.level = 0.95)
+```
+
+
+*Because we get a p-value of less than 0.05, we have statistically significant evidence to reject the null hypothesis that the difference in absolute magnitude between hazardous and non-hazardous asteroids is zero. Moreover, we know there is a statistically significant difference because 0 is not in the confidence interval.*
+
+## Bootstrap
+
+
+*Theoretical interval for means of differences in eccentricity in hazardous and non-hazardous asteroids*
+```{r, echo = F}
+test1 <- t.test(nasa$Eccentricity ~ nasa$Hazardous, conf.level = 0.95)$conf.int
+test1
+```
+
+*Bootstrap interval for means of differences in eccentricity in hazardous and non-hazardous asteroid*
+
+```{r, echo = F}
+#bootstrap
+N <- 10000
+diffHazard <- rep(NA, N)
+for (i in 1:N){
+sTrue <- sample(nasa$Eccentricity[nasa$Hazardous == 'True'],
+                  sum(nasa$Hazardous == 'True'), replace = TRUE)
+  sFalse <- sample(nasa$Eccentricity[nasa$Hazardous== 'False'],
+                  sum(nasa$Hazardous == 'False'), replace = TRUE)
+  diffHazard[i] <- mean(sFalse) - mean(sTrue)
+}
+
+(ci <- quantile(diffHazard, c(0.025, 0.975)))
+round(ci,2)
+
+#Histogram with both bootstrapped and normal t-test:
+hist(diffHazard, col = "blue", main = "Bootstrapped Sample Means of Differences of Eccentricity in Hazardous and Non-Hazardous Asteroids", xlab = "Difference in Eccentricity",cex.main = 0.5, ylim = c(0, 2500))
+#abline adds a line to a plot - v stands for vertical.
+abline(v = ci, lwd = 3, col = "red")
+abline(v = test1, lwd = 3, col = "green", lty = 2)
+legend("topright", c("Theoretical CI", "Boot CI"), lwd = 3, col = c("green","red"), lty = c(2,1), cex = 0.5)
+```
+
+*First, to interpret the theoretical confidence interval, 0 is not within the 95 percent confidence interval of difference in eccentricity between hazardous and non-hazardous asteroids, so we have statistically significant evidence that the difference in eccentricity between hazardous and non-hazardous asteroids is not zero. Second, the 95 percent bootstrap confidence interval gives us a similar result as 0 is not within that confidence interval. There is not much discrepancy between the bootstrapped CI and theoretical CI, though both bounds of the bootstrapped CI are slightly smaller.*
+
+## Permutation
+
+```{r, echo = F}
+permCor <- function(x, y, n_samp = 10000, plotit = T){
+   corResults <- rep(NA, n_samp)
+   for (i in 1:n_samp){
+      corResults[i] <- cor(x, sample(y))
+   }
+   
+   pval <- mean(abs(corResults) >= abs(cor(x, y)))
+   
+   if (plotit == T){
+      #Make histogram of permuted correlations
+      hist(corResults, col = "yellow", main = "", xlab = "Correlations", breaks = 50,
+           xlim = range(corResults,cor(x,y)))
+      mtext("Permuted Sample Correlations", cex = 1.2, line = 1)
+      mtext(paste0("Permuted P-value = ", round(pval, 4),", Calculated P-value = ", round(cor.test(x, y)$p.value, 4)), cex = 0.8, line = 0)
+      abline(v = cor(x, y), col = "blue", lwd = 3)
+      text(cor(x,y)*1.02, 0, paste("Actual Correlation =", round(cor(x, y), 2)), srt = 90, adj = 0)
+   }
+   if (plotit == F){
+      return(round(pval, 5))
+   }  
+}
+permCor(nasa$Eccentricity,nasa$Absolute.Magnitude)
+
+
+```
+
+*We observe a relatively weak negative correlation of -0.36. There was not a clear linear relationship between the variables (and there was no evidence of the relationship being exponential/polynomial) but we wanted to calculate the correlation to make sure. The permutation test gives a p-value of 0 so we conclude that there is a statistically significant non-zero correlation between eccentricity and absolute magnitude.*
+
+# Multiple Regression
+
+## Introduction
+
+*The continuous variable we decided to predict with our multiple regression was relative velocity.. The variables we chose to use were relative velocity, estimated diameter(both maximum and minimum), eccentricity, miss distance. First, we decided to check out correlations between the variables and discovered an issue of colinearity between max and min estimated diameter, so we took min estimated diameter out of the dataset. Then, we fit a best subsets regression and used the Bayesian Information Criteria- we were especially interested in BIC because it penalizes overfitting, which is an issue we wanted to avoid. After fitting, we made residual plots, which showed some evidence of heteroskadisticity. Hence, we decided to make a boxcox transformation and refit relative velocity. While our model final is not perfectly linear, the fit vs. studentized residual plots shows less evidence of heteroskadisticity.*  
+
+```{r, include = F}
+## Check correlation plots beforehand
+library(corrplot)
+#Nasa with varaibles we want to correlate with Relative Velocity
+nasa2 <- nasa[, c('Relative.Velocity.km.per.sec',"Absolute.Magnitude", 'Est.Dia.in.KM.max.','Est.Dia.in.KM.min.', 'Eccentricity','Miss.Dist..kilometers.')]
+round(cor(nasa2,use = "pairwise.complete.obs"),2)
+(sigcorr <- cor.mtest(nasa2, conf.level = 0.95))
+```
+```{r, echo = F}
+corrplot.mixed(cor(nasa2, use = "pairwise.complete.obs"), lower.col="black", 
+               upper = "ellipse", 
+               tl.col = "black", number.cex=.7, 
+                tl.pos = "lt", 
+               tl.cex=.7, p.mat = sigcorr$p, sig.level = .05)
+source("http://www.reuningscherer.net/s&ds230/Rfuncs/regJDRS.txt")
+pairsJDRS(nasa2)
+
+```
+
+*There is a clear colinearity between Est.Dia.in.KM(max) and Est.Dia.in.KM(min).*
+
+```{r, include = F}
+nasa3 <- nasa2[, c('Relative.Velocity.km.per.sec',"Absolute.Magnitude", 'Est.Dia.in.KM.max.', 'Eccentricity','Miss.Dist..kilometers.')]
+modregsub <- regsubsets(nasa3$Relative.Velocity.km.per.sec ~ ., data = nasa3, nvmax = 10)
+modregsubsum <- summary(modregsub)
+```
+```{r, echo = F}
+print("Variables in best subsets model")
+modregsubsum$which
+```
+
+
+```{r, echo = F}
+# Bayesian information criteria
+modnum <- which.min(modregsubsum$bic)
+print("Variables that minimize BIC")
+names(nasa3)[modregsubsum$which[which.min(modregsubsum$bic), ]][-1]
+#it appears that the ones that minimize bic are absolute magnitude, eccentricity, miss distance kilometers.
+nasatemp <- nasa3[,modregsubsum$which[which.min(modregsubsum$bic), ]]
+finalmodel <- lm(nasatemp$Relative.Velocity.km.per.sec~ ., data = nasatemp)
+
+#my res Plots
+myResPlots2(finalmodel)
+```
+
+
+*The NQ Plot is not fully linear and there is some evidence of heteroskadisticity in the Fits vs. Studentized residuals, so we will try a box-cox transformation.*
+
+```{r, echo = F}
+print("BoxCox Transformation")
+trans1 <- boxCox(finalmodel)
+trans1$x[which.max(trans1$y)]
+```
+```{r, include = F}
+nasa3$Relative.Velocity.km.per.sec <- nasa$Relative.Velocity.km.per.sec ^ trans1$x[which.max(trans1$y)]
+#Let's try again!
+modregsub <- regsubsets(nasa3$Relative.Velocity.km.per.sec ~ ., data = nasa3, nvmax = 10)
+(modregsubsum <- summary(modregsub))
+modregsubsum$which
+modnum <- which.min(modregsubsum$bic)
+names(nasa3)[modregsubsum$which[which.min(modregsubsum$bic), ]][-1]
+#it appears that the ones that minimize bic are absolute magnitude, eccentricity, miss distance kilometers.
+nasatemp <- nasa3[,modregsubsum$which[which.min(modregsubsum$bic), ]]
+
+summary(lm(nasatemp$Relative.Velocity.km.per.sec~ ., data = nasatemp))
+finalmodel <- lm(nasatemp$Relative.Velocity.km.per.sec~ ., data = nasatemp)
+```
+
+
+```{r, echo = F}
+
+#my res Plots
+print("New, post-box cox transformation residual plots")
+myResPlots2(finalmodel)
+```
+
+*This new NQ plot is not fully linear(with curvature at lower and higher norm quantities), but there is less evidence of heteroskadisticity in the fit vs. studentized residuals plot. All in all, with the final model containing absolute magnitude, eccentricity, and miss distance in kilometers, all three factors have a p-value of lower than 0.05, meaning they are statistically significant predictors for relative velocity. Coefficients for absolute magnitude are negative, meaning it is inversely related to velocity, while those for eccentricity and miss distance are positive, meaning they are directly relatedd with velocity. Our adjusted r-squared value is 0.38, meaning 38% of the variability in velocity can be explained by our model.*
+
+
+# Logistic Regression
+
+*We chose a logistic binary regression for Hazardous predicted by absolute magnitude, velocity, eccentricity, and miss distance.*
+
+```{r, echo = F}
+#Encode '1' as True, '2' as False, this can also be added to data cleaning category
+# Create binary logistic regression model for whether an asteroid is a hazard or not.
+nasa$logistichazard1 <- gsub("True", 0, nasa$Hazardous)
+nasa$logistichazard2 <- gsub("False", 1, nasa$logistichazard1)
+nasa$logistichazard2 <- as.integer(nasa$logistichazard2)
+m1 <- glm(logistichazard2 ~ Absolute.Magnitude + Relative.Velocity.km.per.sec + Eccentricity ,data = nasa, family = binomial)
+summary(m1)
+```
+
+```{r, echo= F}
+print("Odds Ratio:")
+odds.ratio(m1)
+```
+
+*The p-value for absolute magnitude, relative velocity km.sec, and eccentricity are all less than 0.05, meaning that we have statistically significant evidence that absolute magnitude, velocity, and eccentricity are good predictors for logistichazard. The odds ratio for absolute magnitude is 1.47, indicating that the odds of an asteroid being hazardous increases by 0.47 for each one unit increase in absolute magnitude. 1 is not within 95 percent confidence interval, meaning we have statistical significance that the odds do increase of an asteroid being hazardous as absolute magnitude increases. For relative velocity, the odds ratio is 0.98, meaning that for each additional unit increase in relative velocity (km per sec), the odds of an asteroid being hazardous decreases by 0.02. 0 is not in this confidence interval, meaning we have statistical evidence that relative velocity is a good predictor for hazard. Finally, for eccentricity, the odds radio is 0.45, meaning that the odds of an asteroid being hazardous decreases by 0.55 for each one unit increase in eccentricity. 0 is not within this confidence interval, so we have statistically significant evidence that the odds do indeed change as eccentricity changes.*
+
+```{r, echo = F}
+#Deviance Test:
+(devtab1 <- anova(m1))
+#Get p-value for test of significance
+print("P-value for Deviance Test of Entire Model")
+1 - pchisq(devtab1$Deviance[2], df = devtab1$Df[2])
+```
+
+*Furthermore, the p-value for deviance test is 0.00, meaning that we can reject the null hypotehsis and have statistically significant evidence that the model has significant predictors.*
+
+# Conclusion
+
+*In this exploration, we first identified variables could correlate with Hazardous. Then, we created boxplots that compared continuous variables of Hazardous and non-hazardous asteroids and by the close approach date. We also attempted to find correlations amongst correlations via scatterplots, correlation tests, and permutation correlation tests, though it seemed like very few were actually correlated with one another(rather than the obvious, like absolute magnitude correlating with diameter). We used t-tests to prove differences in eccentricities and magnitude by whether an asteroid is classified as 'Hazardous', and created a multiple linear regression model for velocity. Finally,we created a binary logistic regression model predicting hazard-status based on absolute magnitude, eccentricity, and relative velocity. Our main conclusion for this project was that while there were not strong correlations between the continuous variables, there were clear differences between the cotninuous variables by different categories(e.g. no correlation between eccentricity and absolute magnitude, but Hazardous is a good predictor of both variables). This makes sense, as the data was originally designed to predict Hazard status, so NASA specifically tested features of the asteroids that could impact Hazard. Our project confirms this. *
